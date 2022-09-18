@@ -13,7 +13,19 @@ from clock import get_time, get_date
 from time_diff import convert, get_total_ot_hours
 from play_audio import play_time_in_audio, play_time_out_audio
 from pop_ups import model_error_message, camera_error_message, restart_message, training_message, db_saved_message, \
-    employee_detected_error_message
+    employee_detected_error_message, employee_no_schedule_warning
+
+# Check if the database is connected (get_attendance.py)
+db_connected = False
+try:
+    from get_attendance import time_in, time_out, total_hours, late_or_not, ot_hours, conn
+    from get_attendance import get_employee_time_out, get_employee_time_in, get_total_hours
+    from get_attendance import get_employee_start_time, get_employee_end_time, check_allowed_ot
+    from get_attendance import get_employee_id, get_employee_name
+
+    db_connected = True
+except ImportError:
+    pass
 
 # Haar Cascade Variables
 face_cascade = cv2.CascadeClassifier('cascades/data/haarcascade_frontalface_alt2.xml')
@@ -90,7 +102,7 @@ cancel_db_button.config(state=DISABLED)
 def add_new_employee_name():
     add_emp_textbox.config(state=NORMAL)
     cancel_add_button.config(state=NORMAL)
-    add_emp_textbox.insert(0, 'Enter employee name')
+    add_emp_textbox.insert(0, 'ENTER EMPLOYEE ID')
     add_employee_button.place_forget()
     capture_face_button.place(x=370, y=800)
 
@@ -127,11 +139,11 @@ capture_face_button = Button(root, text='         Capture face          ', comma
 
 # Locate Trainer Model File Directory (YML)
 try:
-    recognizer.read('trainer.yml')  # WILL ERROR AT FIRST STARTUP BECAUSE THERE IS NO TRAINED MODEL YET
+    recognizer.read('trainer.yml')
 except cv2.error as e:
     model_error_message()
 
-labels = {"person_name": 1}  # WILL ERROR AT FIRST STARTUP BECAUSE THERE IS NO TRAINED MODEL YET
+labels = {"person_name": 1}
 
 # Load saved employee name labels (PICKLE)
 with open('Persistence Files/labels.pickle', 'rb') as f:
@@ -142,7 +154,7 @@ with open('Persistence Files/labels.pickle', 'rb') as f:
 cap = cv2.VideoCapture(0)
 
 # Variable to use when inserting attendance record
-detected_face = None
+detected_id = None
 
 
 # Loop makes capturing continuous
@@ -187,17 +199,18 @@ def show_frame():
 
         # Recognize Face
         id_, conf = recognizer.predict(roi_gray)
-        # 40 <= conf <= 90
-        if 30 <= conf <= 90:
+        # 30 <= conf <= 90 # Legacy Calibration before Sept 15 2022
+        if 30 <= conf <= 70:
             font = cv2.FONT_HERSHEY_SIMPLEX
-            name = labels[id_]
+            name = get_employee_name(labels[id_])
             color = (255, 255, 255)
             stroke = 2
             cv2.putText(resize_frame, name, (x, y), font, 1, color, stroke, cv2.LINE_AA)
+            # print('Name: ' + labels[id_] + ' Level: ' + str(conf))  # FOR CALIBRATION TESTING
 
             # Declare detected_face as a global variable
-            global detected_face
-            detected_face = labels[id_]
+            global detected_id
+            detected_id = labels[id_]
 
         else:
             font = cv2.FONT_HERSHEY_SIMPLEX
@@ -205,7 +218,8 @@ def show_frame():
             color = (255, 255, 255)
             stroke = 2
             cv2.putText(resize_frame, name, (x, y), font, 1, color, stroke, cv2.LINE_AA)
-            detected_face = None
+            detected_id = None
+            # print('Name: ' + name + ' Level: ' + str(conf))  # FOR CALIBRATION TESTING
 
     # Show camera in the window
     cv2image = cv2.cvtColor(resize_frame, cv2.COLOR_BGR2RGBA)
@@ -216,29 +230,23 @@ def show_frame():
     lmain.after(10, show_frame)
 
 
-# Check if the database is connected (get_attendance.py)
-db_connected = False
-try:
-    from get_attendance import time_in, time_out, total_hours, late_or_not, ot_hours, conn
-    from get_attendance import get_employee_time_out, get_employee_time_in, get_total_hours
-    from get_attendance import get_employee_start_time, get_employee_end_time, check_allowed_ot
-
-    db_connected = True
-except ImportError:
-    pass
-
-
 # Record attendance functions
 # Employee time in
 def btn_time_in():
-    employee = detected_face
+    employee = get_employee_name(detected_id)
+    employee_id = detected_id
 
     if employee is not None:
         play_time_in_audio()
-        time_in(conn, detected_employee=employee)
+        time_in(conn, detected_employee=employee, detected_employee_id=employee_id)
 
         # Check employee start schedule
-        start_time = convert(get_employee_start_time(employee))
+        try:
+            start_time = convert(get_employee_start_time(employee))
+        except:
+            employee_no_schedule_warning()
+            return
+
         in_time = convert(get_time())
         late = None
 
@@ -257,7 +265,7 @@ def btn_time_in():
 
 # Employee time out
 def btn_time_out():
-    employee = detected_face
+    employee = get_employee_name(detected_id)
 
     if employee is not None:
         play_time_out_audio()
