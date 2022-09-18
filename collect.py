@@ -3,10 +3,10 @@ import os
 from pop_ups import employee_already_exist_message, collect_finished_message
 
 
-def collect_photos(name, cam, cascade):
+def collect_photos(id, cam, cascade):
     count = 0
 
-    nameID = str(name)
+    nameID = str(id)
     path = 'images/' + nameID
 
     isExist = os.path.exists(path)
