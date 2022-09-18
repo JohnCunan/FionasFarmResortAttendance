@@ -46,3 +46,8 @@ def training_message():
 
 def db_saved_message():
     messagebox.showinfo('Info', 'Database server location saved, re-open the application for the changes to take effect')
+    
+    
+def employee_no_schedule_warning():
+    messagebox.showwarning('Warning', 'Employee has no schedule yet')
+
